@@ -187,6 +187,26 @@ def measurement_time_ns(data: dict) -> int | None:
     return None
 
 
+def token_days_remaining(token: str) -> float | None:
+    """Days until the bearer JWT expires, or None if it can't be read.
+
+    This API puts `exp` in milliseconds (not the JWT-standard seconds), so
+    values above ~1e12 are treated as ms.
+    """
+    try:
+        import base64
+        part = token.strip().split()[-1].split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+        exp = payload.get("exp")
+        if exp is None:
+            return None
+        if exp > 1e12:
+            exp /= 1000.0
+        return (exp - time.time()) / 86400.0
+    except Exception:
+        return None
+
+
 # --- output formats ---------------------------------------------------------
 def _lp_escape(v: str) -> str:
     return v.replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
@@ -282,6 +302,22 @@ def cmd_influx(args):
     sys.stderr.write(f"wrote {len(metrics)} fields to influx\n")
 
 
+def cmd_tokeninfo(args):
+    token = args.token or os.environ.get("AEKE_TOKEN", "")
+    if not token:
+        raise AekeError("no token (set AEKE_TOKEN or pass --token)")
+    days = token_days_remaining(token)
+    if days is None:
+        print("token: unreadable / not a JWT")
+        return 1
+    print(f"token expires in {days:.1f} days")
+    if days <= 0:
+        return 1
+    if args.warn_days is not None and days <= args.warn_days:
+        return 2
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="aeke-export", description=__doc__.strip().splitlines()[0])
     p.add_argument("--token", help="bearer token (default: $AEKE_TOKEN)")
@@ -302,13 +338,18 @@ def main(argv=None):
     sp.add_argument("--dry-run", action="store_true", help="print line protocol instead of writing")
     sp.set_defaults(func=cmd_influx)
 
+    sp = sub.add_parser("token-info", help="report days until the token expires")
+    sp.add_argument("--warn-days", type=float, default=None,
+                    help="exit 2 if the token expires within this many days")
+    sp.set_defaults(func=cmd_tokeninfo)
+
     args = p.parse_args(argv)
     try:
-        args.func(args)
+        rc = args.func(args)
     except AekeError as e:
         sys.stderr.write(f"error: {e}\n")
         return 1
-    return 0
+    return rc or 0
 
 
 if __name__ == "__main__":

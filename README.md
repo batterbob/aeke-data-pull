@@ -93,6 +93,26 @@ one point — it does not backfill history.
 
 Data lands as measurement `aeke_body`, tagged `units` and `no` (the weigh-in id).
 
+## Scheduled polling & token alerts
+
+`deploy/run-poll.sh` runs one poll from cron, reading config from a local `.env`
+(see `.env.example`). The token lasts ~30 days and a logout revokes it early, so
+the wrapper watches for that:
+
+- if a poll **fails** (e.g. expired token), it sends one Telegram alert;
+- when the token is within `ALERT_WARN_DAYS` of expiry, it sends **one** nudge
+  (deduped per token) so you can refresh before it breaks.
+
+Alerts are optional — set `ALERT_TELEGRAM_BOT_TOKEN` and `ALERT_TELEGRAM_CHAT_ID`
+to enable them. Check remaining token life any time:
+
+```bash
+python3 aeke_export.py token-info        # "token expires in 27.4 days"
+```
+
+A `deploy/grafana-dashboard.json` is included (InfluxDB v1 datasource) that
+overlays this data with Garmin body-composition and training panels.
+
 ## Options
 
 | Flag / env | Meaning | Default |
