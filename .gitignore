@@ -1,0 +1,16 @@
+# Secrets & local config — never commit
+.env
+*.token
+token.txt
+
+# Captured / exported data
+*.mitm
+captures/
+export/
+poll.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
