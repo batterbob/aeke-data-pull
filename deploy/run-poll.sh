@@ -51,10 +51,22 @@ Likely an expired token. Grab a fresh one from the app and update AEKE_TOKEN in 
   exit $RC
 fi
 
-# Proactive one-shot expiry warning.
-if [[ -n "$DAYS" ]] && awk "BEGIN{exit !($DAYS <= $WARN_DAYS)}"; then
+# Near expiry: open an on-demand refresh window (detached so it outlives cron's
+# timeout). It brings mitmproxy up, alerts you with steps, captures the new
+# token, and tears the proxy back down. Skip if one is already running.
+TRIGGER_DAYS="${REFRESH_TRIGGER_DAYS:-3}"
+REFRESH_CONTAINER="${MITM_CONTAINER:-aeke-mitm-refresh}"
+if [[ -n "$DAYS" ]] && awk "BEGIN{exit !($DAYS <= $TRIGGER_DAYS)}"; then
+  if docker ps --format '{{.Names}}' | grep -qx "$REFRESH_CONTAINER"; then
+    echo "token at ${DAYS}d — refresh window already running"
+  else
+    echo "token at ${DAYS}d — launching detached refresh window"
+    setsid nohup python3 "$HERE/deploy/refresh_window.py" >> "$HERE/refresh.log" 2>&1 < /dev/null &
+  fi
+elif [[ -n "$DAYS" ]] && awk "BEGIN{exit !($DAYS <= $WARN_DAYS)}"; then
+  # Heads-up a bit before the auto-refresh window opens (once per token).
   if ! grep -qx "expiry:$EXP_KEY" "$STATE" 2>/dev/null; then
-    notify "🔑 AEKE token expires in ${DAYS} day(s). Refresh it: open the AEKE app, copy its 'authorization' header, update AEKE_TOKEN in the poller .env."
+    notify "🔑 AEKE token expires in ${DAYS} day(s). I'll auto-open a refresh window at ${TRIGGER_DAYS} days and walk you through it — nothing to do yet."
     echo "expiry:$EXP_KEY" >> "$STATE"
   fi
 fi

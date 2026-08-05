@@ -17,3 +17,5 @@ venv/
 
 # poller alert-dedup state
 .poll-state
+refresh.log
+RUNBOOK.md
